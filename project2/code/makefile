@@ -8,3 +8,7 @@ OBJ=bmp_tool.o main.o
 
 main.exe: $(OBJ)
 	$(CC) -o $@ $^ $(CFLAGS)
+
+.PHONY:
+run:
+	./main.exe

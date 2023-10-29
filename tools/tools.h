@@ -29,7 +29,7 @@ struct Bmp
 };
 typedef struct Bmp *Bmp;
 Bmp bmp_read(char * source);
-Bmp rgb_to_gray_bmp(Bmp bgr);
+Bmp rgb_to_gray_bmp(Bmp bgr,int isextend);
 Bmp gray_to_binary_bmp(Bmp gray,int window_size);
 void thershold_divide_bmp(Bmp binary, Bmp gray, int start_h, int start_w, int height, int width);
 Bmp erosion_dilation_binary_bmp(Bmp binary,int mode,int size);

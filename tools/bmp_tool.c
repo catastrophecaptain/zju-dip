@@ -26,7 +26,7 @@ Bmp bmp_read(char *source)
     fclose(fpt);
     return ret;
 }
-Bmp rgb_to_gray_bmp(Bmp rgb)
+Bmp rgb_to_gray_bmp(Bmp rgb,int isextend)
 {
     int *yuv_graph = (int *)malloc(sizeof(int) * (rgb->bfSize - rgb->bfOffBits));
     Bmp rgb_gray = malloc(sizeof(struct Bmp));
@@ -65,7 +65,13 @@ Bmp rgb_to_gray_bmp(Bmp rgb)
     {
         for (int j = 0; j < rgb_gray->biWidth; j++)
         {
+            if(isextend==1)
+            {
             rgb_gray->data[width * i + j] = (yuv_graph[4 * (rgb_gray->biWidth * i + j)] - min_gray) / (double)(max_gray - min_gray) * 255;
+            }else
+            {
+                rgb_gray->data[width * i + j] = yuv_graph[4 * (rgb_gray->biWidth * i + j)];
+            }
         }
     }
     return rgb_gray;
@@ -90,6 +96,7 @@ void thershold_divide_bmp(Bmp binary, Bmp gray, int start_h, int start_w, int he
     hash[min_gray][1] = min_gray*hash[min_gray][0];
     double max = -1;
     int thershold = min_gray;
+    int flag=(width==binary->biWidth&&height==binary->biHeight)?0:10;
     for (int i = min_gray + 1; i < max_gray + 1; i++)
     {
         hash[i][1] = i * hash[i][0] + hash[i - 1][1];
@@ -106,11 +113,11 @@ void thershold_divide_bmp(Bmp binary, Bmp gray, int start_h, int start_w, int he
     {
         for (int j = start_w; j < start_w+width; j++)
         {
-            if (gray->data[i * width_gray + j] >= thershold)
+            if (gray->data[i * width_gray + j] >= thershold+flag)
             {
                 binary_assign_bmp(binary, i, j, 1);
             }
-            else
+            else if(gray->data[i * width_gray + j] < thershold-flag)
             {
                 binary_assign_bmp(binary, i, j, 0);
             }
@@ -130,6 +137,8 @@ Bmp gray_to_binary_bmp(Bmp gray, int window_size)
     binary->bfSize = binary->bfOffBits + width * binary->biHeight;
     binary->data = malloc(binary->bfSize - binary->bfOffBits);
     thershold_divide_bmp(binary, gray, 0, 0, binary->biHeight, binary->biWidth);
+    if(window_size==0)return binary;
+    // if window_size=0 , just global binary.
     for (int k1 = 0; k1 + window_size < binary->biHeight; k1 += window_size/2)
     {
         for (int k2 = 0; k2 + window_size < binary->biWidth; k2 += window_size/2)
