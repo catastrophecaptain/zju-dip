@@ -70,34 +70,27 @@ Bmp rgb_to_gray_bmp(Bmp rgb)
     }
     return rgb_gray;
 }
-Bmp gray_to_binary_bmp(Bmp gray)
+void thershold_divide_bmp(Bmp binary, Bmp gray, int start_h, int start_w, int height, int width)
 {
-    long long int hash[256][2] = {0}, sum = 0;
+    uint32_t width_gray = (binary->biWidth * 8 + 31) / 32 * 4;
+    long long int hash[256][2] = {0}, sum = 0, max_gray = -1, min_gray = 266;
     double average = 0;
-    Bmp binary = malloc(sizeof(struct Bmp));
-    *binary = *gray;
-    binary->Palette = malloc(8);
-    binary->Palette[1][3] = binary->Palette[0][0] = binary->Palette[0][1] =
-        binary->Palette[0][2] = binary->Palette[0][3] = 0;
-    binary->Palette[1][0] = binary->Palette[1][1] = binary->Palette[1][2] = 255;
-    binary->bfOffBits = 54 + 8, binary->biBitCount = 1;
-    uint32_t width = (binary->biWidth + 31) / 32 * 4, width_gray = (binary->biWidth * 8 + 31) / 32 * 4;
-    binary->bfSize = binary->bfOffBits + width * binary->biHeight;
-    binary->data = malloc(binary->bfSize - binary->bfOffBits);
-    for (int i = 0; i < gray->biHeight; i++)
+    for (int i = start_h; i < start_h + height; i++)
     {
-        for (int j = 0; j < gray->biWidth; j++)
+        for (int j = start_w; j < start_w + width; j++)
         {
             hash[gray->data[i * width_gray + j]][0]++;
             sum++;
             average += gray->data[i * width_gray + j];
+            max_gray = (gray->data[i * width_gray + j] > max_gray) ? gray->data[i * width_gray + j] : max_gray;
+            min_gray = (gray->data[i * width_gray + j] < min_gray) ? gray->data[i * width_gray + j] : min_gray;
         }
     }
     average /= sum;
-    hash[0][1] = 0;
+    hash[min_gray][1] = min_gray*hash[min_gray][0];
     double max = -1;
-    int gray_max = -1;
-    for (int i = 1; i < 256; i++)
+    int thershold = min_gray;
+    for (int i = min_gray + 1; i < max_gray + 1; i++)
     {
         hash[i][1] = i * hash[i][0] + hash[i - 1][1];
         hash[i][0] += hash[i - 1][0];
@@ -106,50 +99,70 @@ Bmp gray_to_binary_bmp(Bmp gray)
         if (max < temp)
         {
             max = temp;
-            gray_max = i;
+            thershold = i;
         }
     }
-    for (int i = 0; i < gray->biHeight; i++)
+    for (int i = start_h; i < start_h+height; i++)
     {
-        for (int j = 0; j < gray->biWidth; j++)
+        for (int j = start_w; j < start_w+width; j++)
         {
-            if (j % 8 == 0)
+            if (gray->data[i * width_gray + j] >= thershold)
             {
-                binary->data[i * width + j / 8] = 0;
+                binary_assign_bmp(binary, i, j, 1);
             }
-            if (gray->data[i * width_gray + j] >= gray_max)
+            else
             {
-                uint8_t mask = (((uint8_t)1) << (7 - j % 8));
-                binary->data[i * width + j / 8] |= mask;
+                binary_assign_bmp(binary, i, j, 0);
             }
+        }
+    }
+}
+Bmp gray_to_binary_bmp(Bmp gray, int window_size)
+{
+    Bmp binary = malloc(sizeof(struct Bmp));
+    *binary = *gray;
+    binary->Palette = malloc(8);
+    binary->Palette[1][3] = binary->Palette[0][0] = binary->Palette[0][1] =
+        binary->Palette[0][2] = binary->Palette[0][3] = 0;
+    binary->Palette[1][0] = binary->Palette[1][1] = binary->Palette[1][2] = 255;
+    binary->bfOffBits = 54 + 8, binary->biBitCount = 1;
+    uint32_t width = (binary->biWidth + 31) / 32 * 4;
+    binary->bfSize = binary->bfOffBits + width * binary->biHeight;
+    binary->data = malloc(binary->bfSize - binary->bfOffBits);
+    thershold_divide_bmp(binary, gray, 0, 0, binary->biHeight, binary->biWidth);
+    for (int k1 = 0; k1 + window_size < binary->biHeight; k1 += window_size/2)
+    {
+        for (int k2 = 0; k2 + window_size < binary->biWidth; k2 += window_size/2)
+        {
+            thershold_divide_bmp(binary, gray, k1, k2, window_size, window_size);
         }
     }
     return binary;
 }
-int binary_get_bmp(Bmp binary, int column, int row)
+int binary_get_bmp(Bmp binary, int row, int column)
 {
     int width = (binary->biWidth + 31) / 32 * 4;
     uint8_t temp = 0;
     int ret = -1;
-    if (column < binary->biHeight && column >= 0 && row < binary->biWidth && row >= 0)
+    if (row < binary->biHeight && row >= 0 && column < binary->biWidth && column >= 0)
     {
-        temp = binary->data[column * width + row / 8];
-        temp <<= row % 8;
+        temp = binary->data[row * width + column / 8];
+        temp <<= column % 8;
         temp >>= 7;
         ret = temp;
     }
     return ret;
 }
-void binary_assign_bmp(Bmp binary, int column, int row, int assign)
+void binary_assign_bmp(Bmp binary, int row, int column, int assign)
 {
     int width = (binary->biWidth + 31) / 32 * 4;
     if (assign == 1)
     {
-        binary->data[column * width + row / 8] |= ((uint8_t)1) << (7 - row % 8);
+        binary->data[row * width + column / 8] |= ((uint8_t)1) << (7 - column % 8);
     }
     else
     {
-        binary->data[column * width + row / 8] &= ~((uint8_t)1) << (7 - row % 8);
+        binary->data[row * width + column / 8] &= ~((uint8_t)1) << (7 - column % 8);
     }
 }
 Bmp erosion_dilation_binary_bmp(Bmp binary, int mode, int size)
