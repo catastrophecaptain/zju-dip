@@ -96,7 +96,7 @@ void thershold_divide_bmp(Bmp binary, Bmp gray, int start_h, int start_w, int he
     hash[min_gray][1] = min_gray*hash[min_gray][0];
     double max = -1;
     int thershold = min_gray;
-    int flag=(width==binary->biWidth&&height==binary->biHeight)?0:10;
+    int flag=(width==binary->biWidth&&height==binary->biHeight)?0:5;
     for (int i = min_gray + 1; i < max_gray + 1; i++)
     {
         hash[i][1] = i * hash[i][0] + hash[i - 1][1];

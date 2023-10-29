@@ -27,6 +27,7 @@
 	\end{split}
 	$$
 	2.根据图像灰度图求出 $\sigma_{between}^2$ 最大的灰度作为阈值进行二值化。
+	3.因为现实光线等原因，大多情况下需要采用局部阈值的方法进行二值化，以尽可能保存图像信息。
 ## 图像形态学操作
 令A为二值图像，B为二值模板（结构元）。
 - 侵蚀：A用B进行侵蚀：
@@ -80,21 +81,28 @@ void binary_assign_bmp(Bmp binary, int column, int row, int assign)
 `binary_get_bmp`用于获得二值图像像素点的值，`binary_assign_bmp`用于给二值图像像素点赋值。
 ## 二值化求解阈值
 ```c
-long long int hash[256][2] = {0}, sum = 0;
-for (int i = 0; i < gray->biHeight; i++)
+void thershold_divide_bmp(Bmp binary, Bmp gray, int start_h, int start_w, int height, int width)
+{
+    uint32_t width_gray = (binary->biWidth * 8 + 31) / 32 * 4;
+    long long int hash[256][2] = {0}, sum = 0, max_gray = -1, min_gray = 266;
+    double average = 0;
+    for (int i = start_h; i < start_h + height; i++)
     {
-        for (int j = 0; j < gray->biWidth; j++)
+        for (int j = start_w; j < start_w + width; j++)
         {
             hash[gray->data[i * width_gray + j]][0]++;
             sum++;
             average += gray->data[i * width_gray + j];
+            max_gray = (gray->data[i * width_gray + j] > max_gray) ? gray->data[i * width_gray + j] : max_gray;
+            min_gray = (gray->data[i * width_gray + j] < min_gray) ? gray->data[i * width_gray + j] : min_gray;
         }
     }
     average /= sum;
-    hash[0][1] = 0;
+    hash[min_gray][1] = min_gray*hash[min_gray][0];
     double max = -1;
-    int gray_max = -1;
-    for (int i = 1; i < 256; i++)
+    int thershold = min_gray;
+    int flag=(width==binary->biWidth&&height==binary->biHeight)?0:10;
+    for (int i = min_gray + 1; i < max_gray + 1; i++)
     {
         hash[i][1] = i * hash[i][0] + hash[i - 1][1];
         hash[i][0] += hash[i - 1][0];
@@ -103,11 +111,40 @@ for (int i = 0; i < gray->biHeight; i++)
         if (max < temp)
         {
             max = temp;
-            gray_max = i;
+            thershold = i;
+        }
+    }
+    for (int i = start_h; i < start_h+height; i++)
+    {
+        for (int j = start_w; j < start_w+width; j++)
+        {
+            if (gray->data[i * width_gray + j] >= thershold+flag)
+            {
+                binary_assign_bmp(binary, i, j, 1);
+            }
+            else if(gray->data[i * width_gray + j] < thershold-flag)
+            {
+                binary_assign_bmp(binary, i, j, 0);
+            }
+        }
+    }
+}
+```
+- 先对图像进行哈希预处理，将各个灰度值的像素点数储存到`hash`数组中，然后依据公式$\sigma_{between}^{2}=w_f\cdot w_b\cdot(\mu_f-\mu_b)^2$遍历灰度值计算出$\sigma_{between}^{2}$最大的阈值。
+- 但为了避免进行局部二值化时灰度的微小扰动造成噪点影响图像质量，设置`flag`,当灰度属于[`thershold-flag`,`thershold+flag`)区间时采用全局二值化值。当全局二值化时`flag`为0不起影响。
+
+## 局部阈值
+
+```c
+for (int k1 = 0; k1 + window_size < binary->biHeight; k1 += window_size/2)
+    {
+        for (int k2 = 0; k2 + window_size < binary->biWidth; k2 += window_size/2)
+        {
+            thershold_divide_bmp(binary, gray, k1, k2, window_size, window_size);
         }
     }
 ```
-先对图像进行哈希预处理，将各个灰度值的像素点数储存到`hash`数组中，然后依据公式$\sigma_{between}^{2}=w_f\cdot w_b\cdot(\mu_f-\mu_b)^2$遍历灰度值计算出$\sigma_{between}^{2}$最大的阈值。
+采用`window_size`*`window_size`的局部窗口进行二值化，以`window_size/2`为单位长度平移，至遍历整个图像。
 ## 腐蚀与膨胀
 ```c
 Bmp erosion_dilation_binary_bmp(Bmp binary, int mode, int size)
@@ -161,10 +198,12 @@ int main()
     printf("Please input the location of the image to be processed.\n");
     char source[300];
     gets(source);
-    Bmp a = bmp_read(source), b;
-    a = rgb_to_gray_bmp(a);
-    a = gray_to_binary_bmp(a);
-    bmp_write(a,"..\\result\\binary.bmp");
+    Bmp a = bmp_read(source), b,c;
+    c = rgb_to_gray_bmp(a,0);
+    a = gray_to_binary_bmp(c,0);
+    bmp_write(a,"..\\result\\binary_global.bmp");
+    a = gray_to_binary_bmp(c,5);
+    bmp_write(a,"..\\result\\binary_enhance.bmp");
     b = erosion_dilation_binary_bmp(a,1,1);
     bmp_write(b,"..\\result\\erosion.bmp");
     b = erosion_dilation_binary_bmp(a,0,1);
@@ -175,10 +214,10 @@ int main()
     b = erosion_dilation_binary_bmp(a,0,1);
     b = erosion_dilation_binary_bmp(b,1,1);
     bmp_write(b,"..\\result\\close.bmp");
-    printf("The results are stored in ..\\reslut");
+    printf("The results are stored in ..\\reslut\n");
 }
 ```
-对读入图像进行先灰度化再二值化，然后再分别进行侵蚀、膨胀、打开、关闭，输出二值化及形态处理结果图像至result文件夹。
+对读入图像进行先灰度化再用两种方法二值化，然后再分别进行侵蚀、膨胀、打开、关闭。输出二值化及形态处理结果图像至result文件夹。
 ## 四、实验环境及运行方法
 
 - 实验环境： win11 + gcc 
@@ -188,7 +227,7 @@ int main()
   -  输入 
 		```
 		make
-		./main.exe
+		make run
 		```
 
 -  样例：
@@ -199,11 +238,14 @@ int main()
 
 |操作|`1.bmp`|`2.bmp`|
 |:---:|:---:|:---:|
-|原始图像|![](..\image\1.bmp)|![](..\image\2.bmp)|
-|二值化|![](..\result\binary1.bmp)|![](..\result\binary2.bmp)|
+|原始图像|<img src="..\image\1.bmp"  />|![](..\image\2.bmp)|
+|全局阈值二值化|![](..\result\binary_global1.bmp)|![](..\result\binary_global2.bmp)|
+|局部阈值二值化（降噪前）|![](..\result\noise1.bmp)|![](..\result\noise2.bmp)|
+|局部阈值二值化（降噪后）|![](..\result\binary_enhance1.bmp)|![](..\result\binary_enhance2.bmp)|
 |侵蚀|![](..\result\erosion1.bmp)|![](..\result\erosion2.bmp)|
 |膨胀|![](..\result\dilation1.bmp)|![](..\result\dilation2.bmp)|
 |打开|![](..\result\open1.bmp)|![](..\result\open2.bmp)|
 |关闭|![](..\result\close1.bmp)|![](..\result\close2.bmp)|
 # 六、心得体会
-bmp图像每一行也需要进行四字节的对齐，很容易犯错。
+- bmp图像每一行也需要进行四字节的对齐，很容易犯错。
+- 局部二值化可以比全局二值化保存更多的细节，但是也会产生噪点的问题，我采用了在阈值一定区间内采用全局二值化像素的方法降噪。
