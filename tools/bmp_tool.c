@@ -26,7 +26,7 @@ Bmp bmp_read(char *source)
     fclose(fpt);
     return ret;
 }
-Bmp rgb_to_gray_bmp(Bmp rgb,int isextend)
+Bmp rgb_to_gray_bmp(Bmp rgb, int isextend)
 {
     int *yuv_graph = (int *)malloc(sizeof(int) * (rgb->bfSize - rgb->bfOffBits));
     Bmp rgb_gray = malloc(sizeof(struct Bmp));
@@ -65,10 +65,11 @@ Bmp rgb_to_gray_bmp(Bmp rgb,int isextend)
     {
         for (int j = 0; j < rgb_gray->biWidth; j++)
         {
-            if(isextend==1)
+            if (isextend == 1)
             {
-            rgb_gray->data[width * i + j] = (yuv_graph[4 * (rgb_gray->biWidth * i + j)] - min_gray) / (double)(max_gray - min_gray) * 255;
-            }else
+                rgb_gray->data[width * i + j] = (yuv_graph[4 * (rgb_gray->biWidth * i + j)] - min_gray) / (double)(max_gray - min_gray) * 255;
+            }
+            else
             {
                 rgb_gray->data[width * i + j] = yuv_graph[4 * (rgb_gray->biWidth * i + j)];
             }
@@ -76,8 +77,9 @@ Bmp rgb_to_gray_bmp(Bmp rgb,int isextend)
     }
     return rgb_gray;
 }
-void thershold_divide_bmp(Bmp binary, Bmp gray, int start_h, int start_w, int height, int width)
+void thershold_divide_bmp(Bmp binary, Bmp gray, int start_h, int start_w, int height, int width, int tol)
 {
+    // tol to avoid small noise in partial picture.
     uint32_t width_gray = (binary->biWidth * 8 + 31) / 32 * 4;
     long long int hash[256][2] = {0}, sum = 0, max_gray = -1, min_gray = 266;
     double average = 0;
@@ -93,10 +95,10 @@ void thershold_divide_bmp(Bmp binary, Bmp gray, int start_h, int start_w, int he
         }
     }
     average /= sum;
-    hash[min_gray][1] = min_gray*hash[min_gray][0];
+    hash[min_gray][1] = min_gray * hash[min_gray][0];
     double max = -1;
     int thershold = min_gray;
-    int flag=(width==binary->biWidth&&height==binary->biHeight)?0:5;
+    int flag = (width == binary->biWidth && height == binary->biHeight) ? 0 : tol;
     for (int i = min_gray + 1; i < max_gray + 1; i++)
     {
         hash[i][1] = i * hash[i][0] + hash[i - 1][1];
@@ -109,15 +111,15 @@ void thershold_divide_bmp(Bmp binary, Bmp gray, int start_h, int start_w, int he
             thershold = i;
         }
     }
-    for (int i = start_h; i < start_h+height; i++)
+    for (int i = start_h; i < start_h + height; i++)
     {
-        for (int j = start_w; j < start_w+width; j++)
+        for (int j = start_w; j < start_w + width; j++)
         {
-            if (gray->data[i * width_gray + j] >= thershold+flag)
+            if (gray->data[i * width_gray + j] >= thershold + flag)
             {
                 binary_assign_bmp(binary, i, j, 1);
             }
-            else if(gray->data[i * width_gray + j] < thershold-flag)
+            else if (gray->data[i * width_gray + j] < thershold - flag)
             {
                 binary_assign_bmp(binary, i, j, 0);
             }
@@ -126,6 +128,7 @@ void thershold_divide_bmp(Bmp binary, Bmp gray, int start_h, int start_w, int he
 }
 Bmp gray_to_binary_bmp(Bmp gray, int window_size)
 {
+    // if window_size=0 , just global binary.
     Bmp binary = malloc(sizeof(struct Bmp));
     *binary = *gray;
     binary->Palette = malloc(8);
@@ -136,14 +139,15 @@ Bmp gray_to_binary_bmp(Bmp gray, int window_size)
     uint32_t width = (binary->biWidth + 31) / 32 * 4;
     binary->bfSize = binary->bfOffBits + width * binary->biHeight;
     binary->data = malloc(binary->bfSize - binary->bfOffBits);
-    thershold_divide_bmp(binary, gray, 0, 0, binary->biHeight, binary->biWidth);
-    if(window_size==0)return binary;
+    thershold_divide_bmp(binary, gray, 0, 0, binary->biHeight, binary->biWidth, 5);
+    if (window_size == 0)
+        return binary;
     // if window_size=0 , just global binary.
-    for (int k1 = 0; k1 + window_size < binary->biHeight; k1 += window_size/2)
+    for (int k1 = 0; k1 + window_size < binary->biHeight; k1 += window_size / 2)
     {
-        for (int k2 = 0; k2 + window_size < binary->biWidth; k2 += window_size/2)
+        for (int k2 = 0; k2 + window_size < binary->biWidth; k2 += window_size / 2)
         {
-            thershold_divide_bmp(binary, gray, k1, k2, window_size, window_size);
+            thershold_divide_bmp(binary, gray, k1, k2, window_size, window_size, 5);
         }
     }
     return binary;
@@ -223,4 +227,86 @@ Bmp bmp_write(Bmp bmp, char *purpose)
     fwrite(bmp->Palette, 1, bmp->bfOffBits - 54, fpt);
     fwrite(bmp->data, 1, bmp->bfSize - bmp->bfOffBits, fpt);
     fclose(fpt);
+}
+Bmp yuv_to_rbg(Bmp origin, YUV yuv)
+{
+    Bmp ret = (Bmp)malloc(sizeof(struct Bmp));
+    *ret = *origin;
+    ret->data = malloc(4 * origin->biHeight * origin->biWidth);
+    for (int i = 0; i < origin->biWidth * origin->biHeight; i++)
+    {
+        int temp[3];
+        temp[0] = yuv[i][0] + 2.036 * yuv[i][1];
+        temp[1] = yuv[i][0] - 0.3954 * yuv[i][1] - 0.5805 * yuv[i][2];
+        temp[2] = yuv[i][0] + 1.1398 * yuv[i][2];
+        double rate = 1;
+        // rate means  maximum of rgb / maximum limit if there is overflow
+        if (temp[0] > 255 | temp[1] > 255 | temp[2] > 255)
+        {
+            int max = -1;
+
+            for (int j = 0; j < 3; j++)
+            {
+                if (max < temp[j])
+                {
+                    max = temp[j];
+                    rate = max / (float)255;
+                }
+            }
+        }
+        for (int j = 0; j < 3; j++)
+        {
+            ret->data[i * 4 + j] = (temp[j] / rate > 0) ? (temp[j] / rate) : 0;
+        }
+    }
+    return ret;
+}
+YUV rgb_to_yuv(Bmp rgb)
+{
+    YUV yuv = (YUV)malloc(rgb->biWidth * rgb->biHeight * 3 * sizeof(int));
+    for (int i = 0; i < rgb->biHeight * rgb->biWidth; i++)
+    {
+        yuv[i][0] = 0.114 * rgb->data[i * 4] + 0.587 * rgb->data[i * 4 + 1] + 0.299 * rgb->data[i * 4 + 2];
+        yuv[i][1] = 0.435 * rgb->data[i * 4] - 0.289 * rgb->data[i * 4 + 1] - 0.147 * rgb->data[i * 4 + 2];
+        yuv[i][2] = -0.100 * rgb->data[i * 4] - 0.515 * rgb->data[i * 4 + 1] + 0.615 * rgb->data[i * 4 + 2];
+    }
+    return yuv;
+}
+Bmp visible_enhance(Bmp source)
+{
+    YUV yuv = rgb_to_yuv(source);
+    int max = -10000000;
+    for (int i = 0; i < source->biHeight * source->biWidth; i++)
+    {
+        max = (yuv[i][0] > max) ? yuv[i][0] : max;
+    }
+
+    for (int i = 0; i < source->biHeight * source->biWidth; i++)
+    {
+        yuv[i][0] = 255 * log(yuv[i][0] / (double)255 + 1) / log(max / (double)255 + 1);
+    }
+    return yuv_to_rbg(source,yuv);
+}
+Bmp histogram_equalization(Bmp source)
+{
+    YUV yuv=rgb_to_yuv(source);
+    long long int sum[256]={0},cnt=0;
+    for(int i=0;i<source->biHeight*source->biWidth;i++)
+    {
+        sum[yuv[i][0]]++;
+        cnt++;
+    }
+    for(int i=1;i<256;i++)
+    {
+        sum[i]+=sum[i-1];
+    }
+    for(int i=0;i<256;i++)
+    {
+        sum[i]=sum[i]/(double)cnt*255;
+    }
+    for(int i=0;i<source->biHeight*source->biWidth;i++)
+    {
+        yuv[i][0]=sum[yuv[i][0]];
+    }
+    return yuv_to_rbg(source,yuv);
 }
