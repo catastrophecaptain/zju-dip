@@ -1,10 +1,12 @@
 #include "tools.h"
 int main()
 {
-     Bmp a = bmp_read("D:\\courses\\23_1\\dip\\project1\\image\\2.bmp"), b;
-    YUV yuv;
-    b=visible_enhance(a);
-    a=histogram_equalization(b);
-    bmp_write(a, ".\\1.bmp");
-    bmp_write(b, ".\\2.bmp");
+    position a;
+    a=malloc(2*sizeof(double));
+    a[0]=1,a[1]=1;
+    //double matrix[3][3]={1,1,0,0,1,0,0,0,1};
+    double matrix[3][3]={cos(PI/6),-sin(PI/6),0,sin(PI/6),cos(PI/6),0,0,0,1};
+    Bmp graph1 = bmp_read(".\\a.bmp"),graph2;
+    graph2=simple_matrix_transformation(graph1,matrix);
+    bmp_write(graph2,".\\1.bmp");
 }
