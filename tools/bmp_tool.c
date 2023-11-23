@@ -403,3 +403,93 @@ Bmp simple_matrix_transformation(Bmp source, double matrix[3][3])
     // truncation of the original coordinates of the inverse transformation
     return desti;
 }
+int sum_core(int width, int height, double core[height][width],
+             int width_start, int width_end, int height_start, int height_end)
+{
+    int sum = 0;
+    for (int i = height_start; i <= width_end; i++)
+    {
+        for (int j = height_start; j <= height_end; j++)
+        {
+            sum += core[i][j];
+        }
+    }
+    return sum;
+}
+void convolution_4byte(Bmp change ,Bmp object, int center_x, int center_y, int core_width,
+                       int core_height, double core[core_height][core_width])
+{
+    int width_l = (center_x > core_width / 2) ? core_width / 2 : center_x;
+    int width_r = (object->biWidth - 1 - center_x > core_width / 2)
+                      ? core_width / 2
+                      : object->biWidth - 1 - center_x;
+    int height_l = (center_y > core_height / 2) ? core_height / 2 : center_y;
+    int height_r = (object->biHeight - 1 - center_y > core_height / 2)
+                       ? core_height / 2
+                       : object->biHeight - 1 - center_y;
+    int sum = sum_core(core_width, core_height, core, core_width / 2 - width_l, core_width / 2 + width_r,
+                       core_height / 2 - height_l, core_height / 2 + height_r);
+    int temp[3] = {0};
+    for (int i = center_y - height_l; i <= center_y + height_r; i++)
+    {
+        for (int j = center_x - width_l; j <= center_x + width_r; j++)
+        {
+            for (int k = 0; k < 3; k++)
+            {
+                temp[k] += core[center_y - i + core_height / 2][center_x - j + core_width / 2] * object->data[i * object->biWidth * 4 + j * 4 + k];
+            }
+        }
+    }
+    for (int i = 0; i < 3; i++)
+    {
+        temp[i] = (temp[i] >= 0) ? temp[i] : 0;
+        temp[i] /= sum;
+        temp[i] = (temp[i]<=255)?temp[i]:255;
+        change->data[center_y * object->biWidth * 4 + center_x * 4 + i] = temp[i];
+    }
+}
+Bmp mean_filter(Bmp source, int core_width, int core_height)
+{
+    double core[core_height][core_width];
+    for (int i = 0; i < core_height; i++)
+    {
+        for (int j = 0; j < core_width; j++)
+        {
+            core[i][j] = 1;
+        }
+    }
+    Bmp ret = malloc(sizeof(struct Bmp));
+    *ret = *source;
+    ret->data = malloc(ret->biWidth * ret->biHeight * 4);
+    for (int i = 0; i < ret->biHeight; i++)
+    {
+        for (int j = 0; j < ret->biWidth; j++)
+        {
+            convolution_4byte(ret,source, j, i, core_width, core_height, core);
+        }
+    }
+    return ret;
+}
+Bmp laplacian_filter(Bmp source)
+{
+    double core[3][3];
+    for (int i = 0; i < 3; i++)
+    {
+        for (int j = 0; j < 3; j++)
+        {
+            core[i][j] = -1;
+        }
+    }
+    core[1][1]=9;
+    Bmp ret = malloc(sizeof(struct Bmp));
+    *ret = *source;
+    ret->data = malloc(ret->biWidth * ret->biHeight * 4);
+    for (int i = 0; i < ret->biHeight; i++)
+    {
+        for (int j = 0; j < ret->biWidth; j++)
+        {
+            convolution_4byte(ret,source, j, i, 3,3, core);
+        }
+    }
+    return ret;
+}
