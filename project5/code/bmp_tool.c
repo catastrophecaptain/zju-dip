@@ -139,7 +139,7 @@ Bmp gray_to_binary_bmp(Bmp gray, int window_size)
     uint32_t width = (binary->biWidth + 31) / 32 * 4;
     binary->bfSize = binary->bfOffBits + width * binary->biHeight;
     binary->data = malloc(binary->bfSize - binary->bfOffBits);
-    thershold_divide_bmp(binary, gray, 0, 0, binary->biHeight, binary->biWidth, 5);
+    thershold_divide_bmp(binary, gray, 0, 0, binary->biHeight, binary->biWidth, 0);
     if (window_size == 0)
         return binary;
     // if window_size=0 , just global binary.
@@ -147,7 +147,7 @@ Bmp gray_to_binary_bmp(Bmp gray, int window_size)
     {
         for (int k2 = 0; k2 + window_size < binary->biWidth; k2 += window_size / 2)
         {
-            thershold_divide_bmp(binary, gray, k1, k2, window_size, window_size, 5);
+            thershold_divide_bmp(binary, gray, k1, k2, window_size, window_size, 10);
         }
     }
     return binary;
@@ -405,6 +405,7 @@ Bmp simple_matrix_transformation(Bmp source, double matrix[3][3])
 }
 int sum_core(int width, int height, double core[height][width],
              int width_start, int width_end, int height_start, int height_end)
+// sum core[width_start:width_end][height_start:height_end]
 {
     int sum = 0;
     for (int i = width_start; i <= width_end; i++)
@@ -416,7 +417,7 @@ int sum_core(int width, int height, double core[height][width],
     }
     return sum;
 }
-void convolution_4byte(Bmp change ,Bmp object, int center_x, int center_y, int core_width,
+void convolution_4byte(Bmp change, Bmp object, int center_x, int center_y, int core_width,
                        int core_height, double core[core_height][core_width])
 {
     int width_l = (center_x > core_width / 2) ? core_width / 2 : center_x;
@@ -427,8 +428,10 @@ void convolution_4byte(Bmp change ,Bmp object, int center_x, int center_y, int c
     int height_r = (object->biHeight - 1 - center_y > core_height / 2)
                        ? core_height / 2
                        : object->biHeight - 1 - center_y;
+    // make boundary checks to prevent crossing the boundary
     int sum = sum_core(core_width, core_height, core, core_width / 2 - width_l, core_width / 2 + width_r,
                        core_height / 2 - height_l, core_height / 2 + height_r);
+    // preparing for normalization
     int temp[3] = {0};
     for (int i = center_y - height_l; i <= center_y + height_r; i++)
     {
@@ -440,13 +443,15 @@ void convolution_4byte(Bmp change ,Bmp object, int center_x, int center_y, int c
             }
         }
     }
+    // convolution
     for (int i = 0; i < 3; i++)
     {
         temp[i] = (temp[i] >= 0) ? temp[i] : 0;
         temp[i] /= sum;
-        temp[i] = (temp[i]<=255)?temp[i]:255;
+        temp[i] = (temp[i] <= 255) ? temp[i] : 255;
         change->data[center_y * object->biWidth * 4 + center_x * 4 + i] = temp[i];
     }
+    // assign values to image pixels after normalization
 }
 Bmp mean_filter(Bmp source, int core_width, int core_height)
 {
@@ -465,9 +470,10 @@ Bmp mean_filter(Bmp source, int core_width, int core_height)
     {
         for (int j = 0; j < ret->biWidth; j++)
         {
-            convolution_4byte(ret,source, j, i, core_width, core_height, core);
+            convolution_4byte(ret, source, j, i, core_width, core_height, core);
         }
     }
+    // traverse pixels for convolution
     return ret;
 }
 Bmp laplacian_filter(Bmp source)
@@ -480,7 +486,11 @@ Bmp laplacian_filter(Bmp source)
             core[i][j] = -1;
         }
     }
-    core[1][1]=9;
+    core[1][1] = 9;
+    // core:
+    // -1  -1  -1
+    // -1   9  -1
+    // -1  -1  -1
     Bmp ret = malloc(sizeof(struct Bmp));
     *ret = *source;
     ret->data = malloc(ret->biWidth * ret->biHeight * 4);
@@ -488,8 +498,9 @@ Bmp laplacian_filter(Bmp source)
     {
         for (int j = 0; j < ret->biWidth; j++)
         {
-            convolution_4byte(ret,source, j, i, 3,3, core);
+            convolution_4byte(ret, source, j, i, 3, 3, core);
         }
     }
+    // traverse pixels for convolution
     return ret;
 }
