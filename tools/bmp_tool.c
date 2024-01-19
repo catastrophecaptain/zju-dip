@@ -403,20 +403,20 @@ Bmp simple_matrix_transformation(Bmp source, double matrix[3][3])
     // truncation of the original coordinates of the inverse transformation
     return desti;
 }
-int sum_core(int width, int height, double core[height][width],
-             int width_start, int width_end, int height_start, int height_end)
+double sum_core(int width, int height, double core[height][width],
+                int width_start, int width_end, int height_start, int height_end)
 {
-    int sum = 0;
-    for (int i = width_start; i <= width_end; i++)
+    double sum = 0;
+    for (int i = height_start; i <= height_end; i++)
     {
-        for (int j = height_start; j <= height_end; j++)
+        for (int j = width_start; j <= width_end; j++)
         {
             sum += core[i][j];
         }
     }
     return sum;
 }
-void convolution_4byte(Bmp change ,Bmp object, int center_x, int center_y, int core_width,
+void convolution_4byte(Bmp change, Bmp object, int center_x, int center_y, int core_width,
                        int core_height, double core[core_height][core_width])
 {
     int width_l = (center_x > core_width / 2) ? core_width / 2 : center_x;
@@ -427,16 +427,16 @@ void convolution_4byte(Bmp change ,Bmp object, int center_x, int center_y, int c
     int height_r = (object->biHeight - 1 - center_y > core_height / 2)
                        ? core_height / 2
                        : object->biHeight - 1 - center_y;
-    int sum = sum_core(core_width, core_height, core, core_width / 2 - width_l, core_width / 2 + width_r,
-                       core_height / 2 - height_l, core_height / 2 + height_r);
-    int temp[3] = {0};
+    double sum = sum_core(core_width, core_height, core, core_width / 2 - width_l, core_width / 2 + width_r,
+                          core_height / 2 - height_l, core_height / 2 + height_r);
+    double temp[3] = {0};
     for (int i = center_y - height_l; i <= center_y + height_r; i++)
     {
         for (int j = center_x - width_l; j <= center_x + width_r; j++)
         {
             for (int k = 0; k < 3; k++)
             {
-                temp[k] += core[center_y - i + core_height / 2][center_x - j + core_width / 2] * object->data[i * object->biWidth * 4 + j * 4 + k];
+                temp[k] += core[i - center_y + core_height / 2][j - center_x + core_width / 2] * object->data[i * object->biWidth * 4 + j * 4 + k];
             }
         }
     }
@@ -444,7 +444,7 @@ void convolution_4byte(Bmp change ,Bmp object, int center_x, int center_y, int c
     {
         temp[i] = (temp[i] >= 0) ? temp[i] : 0;
         temp[i] /= sum;
-        temp[i] = (temp[i]<=255)?temp[i]:255;
+        temp[i] = (temp[i] <= 255) ? temp[i] : 255;
         change->data[center_y * object->biWidth * 4 + center_x * 4 + i] = temp[i];
     }
 }
@@ -465,7 +465,7 @@ Bmp mean_filter(Bmp source, int core_width, int core_height)
     {
         for (int j = 0; j < ret->biWidth; j++)
         {
-            convolution_4byte(ret,source, j, i, core_width, core_height, core);
+            convolution_4byte(ret, source, j, i, core_width, core_height, core);
         }
     }
     return ret;
@@ -480,7 +480,7 @@ Bmp laplacian_filter(Bmp source)
             core[i][j] = -1;
         }
     }
-    core[1][1]=9;
+    core[1][1] = 9;
     Bmp ret = malloc(sizeof(struct Bmp));
     *ret = *source;
     ret->data = malloc(ret->biWidth * ret->biHeight * 4);
@@ -488,7 +488,96 @@ Bmp laplacian_filter(Bmp source)
     {
         for (int j = 0; j < ret->biWidth; j++)
         {
-            convolution_4byte(ret,source, j, i, 3,3, core);
+            convolution_4byte(ret, source, j, i, 3, 3, core);
+        }
+    }
+    return ret;
+}
+Bmp bilateral_filter(Bmp source, int core_width, int core_height, double sigma_p, double sigma_c)
+// core_width and core_height must be odd
+{
+    double core[core_height][core_width];
+    for (int i = 0; i < core_height; i++)
+    {
+        for (int j = 0; j < core_width; j++)
+        {
+            core[i][j] = 0;
+        }
+    }
+    Bmp ret = malloc(sizeof(struct Bmp));
+    *ret = *source;
+    ret->data = malloc(ret->biWidth * ret->biHeight * 4);
+    for (int y = 0; y < source->biHeight; y++)
+    {
+        for (int x = 0; x < source->biWidth; x++)
+        {
+            for (int i = (y - core_height / 2 >= 0) ? y - core_height / 2 : 0;
+                 i <= ((y + core_height / 2 < source->biHeight) ? core_height / 2 + y
+                                                                : source->biHeight - 1);
+                 i++)
+            {
+                for (int j = (x - core_width / 2 >= 0) ? x - core_width / 2 : 0;
+                     j <= ((x + core_width / 2 < source->biWidth) ? x + core_width / 2
+                                                                  : (source->biWidth - 1));
+                     j++)
+                {
+                    core[i - y + core_height / 2][j - x + core_width / 2] =
+                        exp(-(pow(i - y, 2) + pow(j - x, 2)) / (2 * pow(sigma_p, 2)) -
+                            (pow(source->data[(y * source->biWidth + x) * 4] - source->data[(i * source->biWidth + j) * 4], 2) +
+                             pow(source->data[(y * source->biWidth + x) * 4 + 1] - source->data[(i * source->biWidth + j) * 4 + 1], 2) +
+                             pow(source->data[(y * source->biWidth + x) * 4 + 2] - source->data[(i * source->biWidth + j) * 4 + 2], 2)) /
+                                (2 * pow(sigma_c, 2)));
+                }
+            }
+            convolution_4byte(ret, source, x, y, core_width, core_height, core);
+        }
+    }
+    return ret;
+}
+Bmp bmp_copy(Bmp source)
+{
+    Bmp ret = (Bmp)malloc(sizeof(struct Bmp));
+    *ret = *source;
+    ret->data = malloc(source->bfSize - source->bfOffBits);
+    memcpy(ret->data, source->data, source->bfSize - source->bfOffBits);
+    ret->Palette = malloc(source->bfOffBits - 54);
+    memcpy(ret->Palette, source->Palette, source->bfOffBits - 54);
+    return ret;
+}
+Bmp binaray_difference(Bmp graph1, Bmp graph2)
+{
+    Bmp graph3 = bmp_copy(graph1);
+    for (int i = 0; i < graph1->biHeight; i++)
+    {
+        for (int j = 0; j < graph1->biWidth; j++)
+        {
+            if (binary_get_bmp(graph1, i, j) != binary_get_bmp(graph2, i, j))
+            {
+                binary_assign_bmp(graph3, i, j, 1);
+            }
+            else
+            {
+                binary_assign_bmp(graph3, i, j, 0);
+            }
+        }
+    }
+    return graph3;
+}
+Bmp bmp_cut(Bmp source, int start_h, int start_w, int height, int width)
+{
+    Bmp ret = malloc(sizeof(struct Bmp));
+    *ret = *source;
+    ret->biHeight = height;
+    ret->biWidth = width;
+    ret->bfSize = width * 4 * height + source->bfOffBits;
+    ret->data = malloc(ret->bfSize - ret->bfOffBits);
+    for(int i=0;i<ret->biWidth;i++)
+    {
+        for(int j=0;j<ret->biHeight;j++)
+        {
+            ret->data[j*ret->biWidth*4+i*4]=source->data[(j+start_h)*source->biWidth*4+(i+start_w)*4];
+            ret->data[j*ret->biWidth*4+i*4+1]=source->data[(j+start_h)*source->biWidth*4+(i+start_w)*4+1];
+            ret->data[j*ret->biWidth*4+i*4+2]=source->data[(j+start_h)*source->biWidth*4+(i+start_w)*4+2];
         }
     }
     return ret;

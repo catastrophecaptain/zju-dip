@@ -45,7 +45,7 @@ Bmp visible_enhance(Bmp source);
 Bmp histogram_equalization(Bmp source);
 position get_transformation(position point, double matrix[3][3]);
 Bmp simple_matrix_transformation(Bmp source, double matrix[3][3]);
-int sum_core(int width, int height, double core[height][width],
+double sum_core(int width, int height, double core[height][width],
              int width_start, int width_end, int height_start, int height_end);
 void convolution_4byte(Bmp change, Bmp object, int center_x, int center_y, int core_width,
                        int core_height, double core[core_height][core_width]);

@@ -46,13 +46,10 @@ Bmp histogram_equalization(Bmp source);
 position get_transformation(position point, double matrix[3][3]);
 Bmp simple_matrix_transformation(Bmp source, double matrix[3][3]);
 double sum_core(int width, int height, double core[height][width],
-                int width_start, int width_end, int height_start, int height_end);
+             int width_start, int width_end, int height_start, int height_end);
 void convolution_4byte(Bmp change, Bmp object, int center_x, int center_y, int core_width,
                        int core_height, double core[core_height][core_width]);
 Bmp mean_filter(Bmp source, int core_width, int core_height);
 Bmp laplacian_filter(Bmp source);
 Bmp bilateral_filter(Bmp source, int core_width, int core_height, double sigma_d, double sigma_r);
-Bmp bmp_copy(Bmp source);
-Bmp binaray_difference(Bmp graph1, Bmp graph2);
-Bmp bmp_cut(Bmp source,int start_h,int start_w,int height,int width);
 #endif
